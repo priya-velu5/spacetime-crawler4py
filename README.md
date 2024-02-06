@@ -1,5 +1,11 @@
+TEAM MEMBERS:
+1. Mohanapriya Singaravelu
+2. Sri Gayathri Devi Ilango
+
 ABOUT
 -------------------------
+
+
 This is the base implementation of a full crawler that uses a spacetime
 cache server to receive requests.
 
