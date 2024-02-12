@@ -7,11 +7,8 @@ import os
 class Scraper:
     def __init__(self):
         self.visited_urls = set()
+        
     def scraper(self, url, resp):
-
-        #Detect and avoid infinite traps
-        def __init__(self):
-            self.visited_urls = set()
 
         if url in self.visited_urls:
             return []  # Skip processing if URL has already been visited - URL deduplication
@@ -20,7 +17,7 @@ class Scraper:
             links = self.extract_next_links(url, resp)
             if links:
                 print("yes links")
-            self.save_to_local_disk(url, resp)
+            # self.save_to_local_disk(url, resp)
             return [link for link in links if self.is_valid(link)]
 
 
@@ -41,7 +38,7 @@ class Scraper:
             scraped_urls = [urldefrag(url)[0] for url in scraped_urls]
 
             # Filter URLs to include only those within the specified domains and paths
-            # scraped_urls = [url for url in scraped_urls if self.is_valid(url)]
+            scraped_urls = [url for url in scraped_urls if self.is_valid(url)]
             print(scraped_urls)
             return scraped_urls
         else:
@@ -66,14 +63,21 @@ class Scraper:
             parsed = urlparse(url)
             if parsed.scheme not in {"http", "https"}:
                 return False
+            '''
+             # Check if the domain is allowed
+            if parsed.netloc not in allowed_domains:
+                 return False
 
-#             # Check if the domain is allowed
-#             if parsed.netloc not in allowed_domains:
-#                 return False
-
-#             # Check if the path is allowed
-#             if not any(parsed.path.startswith(path) for path in allowed_paths):
-#                 return False
+             # Check if the path is allowed
+            if not any(parsed.path.startswith(path) for path in allowed_paths):
+                return False
+            '''
+            # Check if the URL starts with "https://swiki.ics.uci.edu/" - temporary fix to avoid getting there
+            if parsed.scheme == "https" and parsed.netloc == "swiki.ics.uci.edu" and parsed.path.startswith("/"):
+                return False
+            # Check if the URL starts with "https://wiki.ics.uci.edu/" - temporary fix to avoid getting there
+            if parsed.scheme == "https" and parsed.netloc == "wiki.ics.uci.edu" and parsed.path.startswith("/"):
+                return False
 
             return not re.match(
                 r".*\.(css|js|bmp|gif|jpe?g|ico"

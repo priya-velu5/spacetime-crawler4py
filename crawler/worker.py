@@ -24,6 +24,7 @@ class Worker(Thread):
         self.scraper = Scraper() 
         self.crawled_hashes = set()
         self.text_content = ""
+        self.visited_urls = set()
 
         # Basic check for requests in scraper
         scraper_source = inspect.getsource(Scraper)
@@ -38,7 +39,17 @@ class Worker(Thread):
             if not tbd_url:
                 self.logger.info("Frontier is empty. Stopping Crawler.")
                 break
+            '''
+            # Avoid infinite loops by checking if the URL has been visited before
+            if tbd_url in self.visited_urls:
+                self.logger.info(f"Avoiding {tbd_url} to prevent infinite loop.")
+                self.frontier.mark_url_complete(tbd_url)
+                continue
 
+            # Mark the URL as visited
+            self.visited_urls.add(tbd_url)
+            ''' 
+            
             # Honor the politeness delay
             time.sleep(self.config.time_delay)
 
@@ -67,42 +78,63 @@ class Worker(Thread):
                         self.logger.info(f"Skipping {tbd_url} due to its large size and low information value.")
                         self.frontier.mark_url_complete(tbd_url)
                         continue
-
-                scraped_urls = self.scraper.scraper(tbd_url, resp)
-
-                if not scraped_urls:
-                    self.logger.info(f"Skipping {tbd_url} as it has no information content.")
-                    self.frontier.mark_url_complete(tbd_url)
-                    continue
-
-                for scraped_url in scraped_urls:
-                    # Detect and avoid prohibited sites
-                    if self.should_avoid(scraped_url):
-                        self.logger.info(f"Avoiding {scraped_url} to prevent external crawl.")
-                        continue                                              
-
                         
-                    # Check similarity with already scraped pages
-                    if self.is_similar_to_scraped(scraped_url):
-                        self.logger.info(f"Skipping {scraped_url} as it is similar to already scraped pages.")
-                        continue
-                        
-                        
-                    self.frontier.add_url(scraped_url)
-                    self.logger.info(f"Added {scraped_url} to the frontier.")
+                '''
+                ##### Get the text content from the html file 
+                soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
+                # kill all script and style elements
+                for script in soup(["script", "style"]):
+                    script.extract()    # rip it out
+                
+                # get text
+                text = soup.get_text()
+                self.text_content = text
+                ''' 
 
-                    # download the text content if all checks are passed
-                    self.download_text(scraped_url)
+                #self.text_content= resp.raw_response.content.decode("utf-8", "ignore")
+                if resp.raw_response is not None:
+                    self.text_content = resp.raw_response.content.decode("utf-8", "ignore") 
                     
-                    # Check if the download was successful
-                    if resp is None:
-                        self.logger.info(f"Failed to download {tbd_url}. Skipping.")
+                    # download the text content if all checks are passed
+                    self.download_text(tbd_url)
+                    scraped_urls = self.scraper.scraper(tbd_url, resp)
+
+                    if not scraped_urls:
+                        self.logger.info(f"Skipping {tbd_url} as it has no information content.")
                         self.frontier.mark_url_complete(tbd_url)
                         continue
 
-                    self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
+                    for scraped_url in scraped_urls:
+                        # Detect and avoid prohibited sites
+                        if self.should_avoid(scraped_url):
+                            self.logger.info(f"Avoiding {scraped_url} to prevent external crawl.")
+                            continue                                              
 
-                self.frontier.mark_url_complete(tbd_url)
+
+                        # Check similarity with already scraped pages
+                        if self.is_similar_to_scraped(scraped_url):
+                            self.logger.info(f"Skipping {scraped_url} as it is similar to already scraped pages.")
+                            continue
+
+
+                        self.frontier.add_url(scraped_url)
+                        self.logger.info(f"Added {scraped_url} to the frontier.")
+
+                        # Check if the download was successful
+                        if resp is None:
+                            self.logger.info(f"Failed to download {tbd_url}. Skipping.")
+                            self.frontier.mark_url_complete(tbd_url)
+                            continue
+
+                        self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
+
+                    self.frontier.mark_url_complete(tbd_url)
+                else:
+                    None
+
+                
+                
+                
                 
     
             
@@ -136,7 +168,6 @@ class Worker(Thread):
 #                 return True        
     
         #minimum text length
-        self.text_content = resp.raw_response.content.decode("utf-8", "ignore")
         if len(self.text_content) < self.config.min_text_length:
             return True
         
@@ -175,7 +206,7 @@ class Worker(Thread):
         parsed_url = urlparse(url)
         domain = parsed_url.netloc
         path = parsed_url.path
-
+        
         # Check if the domain is in the list of allowed domains
         if not any(domain.endswith(allowed_domain) for allowed_domain in self.config.allowed_domains):
             self.logger.info(f"Avoiding {url} because it's not in the allowed domains.")
@@ -185,15 +216,18 @@ class Worker(Thread):
         if not any(path.startswith(allowed_path) for allowed_path in self.config.allowed_paths):
             self.logger.info(f"Avoiding {url} because it's not in the allowed paths.")
             return True
+        
+        
 
         return False
 
-
-
     def download_text(self, url):
         """
-        Download the content of the given URL and return the text content.
+        save the correct url and save the content in results dir.
         """
+        with open("finalURL.txt", 'a') as op:
+            op.write(url + '\n')
+        
         folder = os.path.join(self.config.output_dir, "downloaded")
         os.makedirs(folder, exist_ok=True)
         filename = f"{hashlib.sha256(url.encode()).hexdigest()}.txt"
@@ -208,7 +242,6 @@ class Worker(Thread):
         
 
     def hash_content(self, content):
-        # Create a new sha256 hash object
 
         # Create a new sha256 hash object
         hash_object = hashlib.sha256()
@@ -231,6 +264,11 @@ class Worker(Thread):
         """
         # Download the content of the URL
         resp = download(url, self.config, self.logger)
+        
+        # Check if the URL has been visited before
+        if url in self.visited_urls:
+            self.logger.info(f"Skipping {url} as it has already been visited.")
+            return True
 
         if resp and resp.raw_response and resp.raw_response.content:
             # Calculate hash of the content
