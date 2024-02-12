@@ -97,6 +97,9 @@ class Worker(Thread):
                     
                     # download the text content if all checks are passed
                     self.download_text(tbd_url)
+                    # if self.should_avoid(tbd_url):
+                    #     self.logger.info(f"Avoiding {tbd_url} to prevent external crawl.")
+                    #     continue              
                     scraped_urls = self.scraper.scraper(tbd_url, resp)
 
                     if not scraped_urls:
@@ -105,10 +108,7 @@ class Worker(Thread):
                         continue
 
                     for scraped_url in scraped_urls:
-                        # Detect and avoid prohibited sites
-                        if self.should_avoid(scraped_url):
-                            self.logger.info(f"Avoiding {scraped_url} to prevent external crawl.")
-                            continue                                              
+                        # Detect and avoid prohibited sites                                
 
 
                         # Check similarity with already scraped pages
@@ -207,6 +207,9 @@ class Worker(Thread):
         domain = parsed_url.netloc
         path = parsed_url.path
         
+        print("Allowed Domains:", self.config.allowed_domains)
+        print("Allowed Paths:", self.config.allowed_paths)
+        
         # Check if the domain is in the list of allowed domains
         if not any(domain.endswith(allowed_domain) for allowed_domain in self.config.allowed_domains):
             self.logger.info(f"Avoiding {url} because it's not in the allowed domains.")
@@ -282,6 +285,5 @@ class Worker(Thread):
             self.crawled_hashes.add(content_hash)
 
         return False
-
 
 

@@ -7,6 +7,7 @@ import os
 class Scraper:
     def __init__(self):
         self.visited_urls = set()
+       
         
     def scraper(self, url, resp):
 
@@ -60,23 +61,24 @@ class Scraper:
         ]
 
         try:
+            
             parsed = urlparse(url)
             if parsed.scheme not in {"http", "https"}:
                 return False
-            '''
-             # Check if the domain is allowed
-            if parsed.netloc not in allowed_domains:
-                 return False
-
-             # Check if the path is allowed
-            if not any(parsed.path.startswith(path) for path in allowed_paths):
-                return False
-            '''
+            netloc = parsed.netloc.replace("www.", "")
+#             if netloc not in allowed_domains:
+#                 print("Not allowed domain:", parsed.netloc)
+#                 print("Allowed domains:", allowed_domains)
+#                 return False
+            
+#             if not any(parsed.path.startswith(path) for path in allowed_paths):
+#                 return False
+            
             # Check if the URL starts with "https://swiki.ics.uci.edu/" - temporary fix to avoid getting there
-            if parsed.scheme == "https" and parsed.netloc == "swiki.ics.uci.edu" and parsed.path.startswith("/"):
+            if parsed.scheme == "https" and netloc == "swiki.ics.uci.edu" and parsed.path.startswith("/"):
                 return False
             # Check if the URL starts with "https://wiki.ics.uci.edu/" - temporary fix to avoid getting there
-            if parsed.scheme == "https" and parsed.netloc == "wiki.ics.uci.edu" and parsed.path.startswith("/"):
+            if parsed.scheme == "https" and netloc == "wiki.ics.uci.edu" and parsed.path.startswith("/"):
                 return False
 
             return not re.match(
