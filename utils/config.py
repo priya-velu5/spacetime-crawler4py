@@ -28,3 +28,4 @@ class Config(object):
         self.allowed_domains = list(config["CRAWLER"]["ALLOWED_DOMAINS"].split(","))
         self.allowed_paths = list(config["CRAWLER"]["ALLOWED_PATHS"].split(","))
         self.cache_server = None
+        self.num_threads = 5

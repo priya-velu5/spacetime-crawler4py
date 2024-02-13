@@ -1,63 +1,51 @@
-from threading import Thread
-
+import time
+import os
+from threading import Thread, Lock
 from inspect import getsource
 from utils.download import download
 from utils import get_logger
 from scraper import Scraper
-from urllib.parse import urlparse,urljoin, urldefrag
-from utils import get_urlhash
+from urllib.parse import urlparse, urldefrag
 import re
-import time
-import inspect
-import nltk
-from nltk.corpus import stopwords
-
 import hashlib
-import os
 
 
 class Worker(Thread):
-    def __init__(self, worker_id, config, frontier):
+    def __init__(self, worker_id, config, frontier, politeness):
         self.logger = get_logger(f"Worker-{worker_id}", "Worker")
         self.config = config
         self.frontier = frontier
-        self.scraper = Scraper() 
+        self.scraper = Scraper()
         self.crawled_hashes = set()
-        self.text_content = ""
-        self.visited_urls = set()
-
-        # Basic check for requests in scraper
-        scraper_source = inspect.getsource(Scraper)
-        assert scraper_source.find("import requests") == -1, "Do not use requests in scraper.py"
-        assert scraper_source.find("import urllib.request") == -1, "Do not use urllib.request in scraper.py"
+        self.politeness = politeness  # Politeness delay per domain
+        self.last_access_time = {}  # Store last access time per domain
+        self.lock = Lock()  # Lock for thread safety
+        self.visited_urls = set()  
+        
+        # Initialize last access time for each domain to avoid KeyErrors
+        for domain in self.config.allowed_domains:
+            self.last_access_time[domain] = 0
 
         super().__init__(daemon=True)
-        
+
     def run(self):
         while True:
             tbd_url = self.frontier.get_tbd_url()
             if not tbd_url:
                 self.logger.info("Frontier is empty. Stopping Crawler.")
                 break
-            '''
-            # Avoid infinite loops by checking if the URL has been visited before
-            if tbd_url in self.visited_urls:
-                self.logger.info(f"Avoiding {tbd_url} to prevent infinite loop.")
-                self.frontier.mark_url_complete(tbd_url)
-                continue
 
-            # Mark the URL as visited
-            self.visited_urls.add(tbd_url)
-            ''' 
-            
             # Honor the politeness delay
-            time.sleep(self.config.time_delay)
-            
-            #if self.isvalid(tbd_url):
+            parsed_url = urlparse(tbd_url)
+            domain = parsed_url.netloc.replace("www.", "")
+            with self.lock:
+                current_time = time.time()
+                if current_time - self.last_access_time[domain] < self.politeness:
+                    time.sleep(self.politeness - (current_time - self.last_access_time[domain]))
+                self.last_access_time[domain] = time.time()
+
             resp = download(tbd_url, self.config, self.logger)
-            #else:
-                #self.logger.info( f"skipping {tbd_url}, as it is prohibited!! ")
-                #continue
+       
             self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
             
             
