@@ -53,12 +53,13 @@ class Worker(Thread):
             # Honor the politeness delay
             time.sleep(self.config.time_delay)
             
-            if self.isvalid(tbd_url):
-                resp = download(tbd_url, self.config, self.logger)
-            else:
-                self.logger.info( f"skipping {tbd_url}, as it is prohibited!! ")
-                continue
+            #if self.isvalid(tbd_url):
+            resp = download(tbd_url, self.config, self.logger)
+            #else:
+                #self.logger.info( f"skipping {tbd_url}, as it is prohibited!! ")
+                #continue
             self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
+            
             
             # Check invalid responses
             if not resp:
@@ -99,40 +100,39 @@ class Worker(Thread):
                     self.text_content = resp.raw_response.content.decode("utf-8", "ignore") 
                     
                     
-                    if self.isvalid(tbd_url):
+                    #if self.isvalid(tbd_url):
                         # download the text content if all checks are passed
-                        self.download_text(tbd_url)              
-                        scraped_urls = self.scraper.scraper(tbd_url, resp)
+                    self.download_text(tbd_url)              
+                    scraped_urls = self.scraper.scraper(tbd_url, resp)
 
-                        if not scraped_urls:
-                            self.logger.info(f"Skipping {tbd_url} as it has no information content.")
+                    if not scraped_urls:
+                        self.logger.info(f"Skipping {tbd_url} as it has no information content.")
+                        self.frontier.mark_url_complete(tbd_url)
+                        continue
+
+                    for scraped_url in scraped_urls:
+                        # Detect and avoid prohibited sites                                
+
+                        # Check similarity with already scraped pages
+                        if self.is_similar_to_scraped(scraped_url):
+                            self.logger.info(f"Skipping {scraped_url} as it is similar to already scraped pages.")
+                            continue
+
+
+                        self.frontier.add_url(scraped_url)
+                        self.logger.info(f"Added {scraped_url} to the frontier.")
+
+                        # Check if the download was successful
+                        if resp is None:
+                            self.logger.info(f"Failed to download {tbd_url}. Skipping.")
                             self.frontier.mark_url_complete(tbd_url)
                             continue
 
-                        for scraped_url in scraped_urls:
-                            # Detect and avoid prohibited sites                                
-
-
-                            # Check similarity with already scraped pages
-                            if self.is_similar_to_scraped(scraped_url):
-                                self.logger.info(f"Skipping {scraped_url} as it is similar to already scraped pages.")
-                                continue
-
-
-                            self.frontier.add_url(scraped_url)
-                            self.logger.info(f"Added {scraped_url} to the frontier.")
-
-                            # Check if the download was successful
-                            if resp is None:
-                                self.logger.info(f"Failed to download {tbd_url}. Skipping.")
-                                self.frontier.mark_url_complete(tbd_url)
-                                continue
-
-                            self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
+                        self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
 
                         self.frontier.mark_url_complete(tbd_url)
-                    else:
-                        self.logger.info(f"Avoiding {tbd_url} to prevent external crawl - helo.")
+                    #else:
+                        #self.logger.info(f"Avoiding {tbd_url} to prevent external crawl - helo.")
 
                 else:
                     pass
@@ -203,36 +203,36 @@ class Worker(Thread):
         
         return False
     
-    def isvalid(self, url):
-        allowed_domains = [
-            "ics.uci.edu",
-            "cs.uci.edu",
-            "informatics.uci.edu",
-            "stat.uci.edu",
-            "today.uci.edu"
-        ]
-        allowed_paths = [
-            "/",
-            "/department/information_computer_sciences/"
-        ]
+#     def isvalid(self, url):
+#         allowed_domains = [
+#             "ics.uci.edu",
+#             "cs.uci.edu",
+#             "informatics.uci.edu",
+#             "stat.uci.edu",
+#             "today.uci.edu"
+#         ]
+#         allowed_paths = [
+#             "/",
+#             "/department/information_computer_sciences/"
+#         ]
 
     
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
-            return False
-        netloc = parsed.netloc.replace("www.", "")
-        print(netloc)
-        print(allowed_domains)
-        if netloc in allowed_domains and any(parsed.path.startswith(path) for path in allowed_paths):
-            # print("Not allowed domain:", parsed.netloc)
-            # print("Allowed domains:", allowed_domains)
-            return True
-
-#         if  any(parsed.path.startswith(path) for path in allowed_paths):
+#         parsed = urlparse(url)
+#         if parsed.scheme not in {"http", "https"}:
+#             return False
+#         netloc = parsed.netloc.replace("www.", "")
+#         print(netloc)
+#         print(allowed_domains)
+#         if netloc in allowed_domains and any(parsed.path.startswith(path) for path in allowed_paths):
+#             # print("Not allowed domain:", parsed.netloc)
+#             # print("Allowed domains:", allowed_domains)
 #             return True
+
+# #         if  any(parsed.path.startswith(path) for path in allowed_paths):
+# #             return True
         
-        print(netloc, "not here")
-        return False
+#         print(netloc, "not here")
+#         return False
     
     
     def should_avoid(self, url):
@@ -280,7 +280,10 @@ class Worker(Thread):
         
         folder = os.path.join(self.config.output_dir, "downloaded")
         os.makedirs(folder, exist_ok=True)
-        filename = f"{hashlib.sha256(url.encode()).hexdigest()}.txt"
+        
+        filename = url.split('//')[1]
+        filename = filename.replace('/','_')
+        filename = filename+ '.txt'
         # Create the full file path
         file_path = os.path.join(folder, filename)
 

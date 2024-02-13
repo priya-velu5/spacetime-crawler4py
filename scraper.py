@@ -3,6 +3,8 @@ from urllib.parse import urlparse,urljoin, urldefrag
 from utils import get_urlhash
 from bs4 import BeautifulSoup
 import os
+from lxml import html
+from utils import normalize
 
 class Scraper:
     def __init__(self):
@@ -26,22 +28,47 @@ class Scraper:
     def extract_next_links(self,url, resp):
         if resp.status == 200 and resp.raw_response.content:
             print("yes extract")
-            soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
-            base_url = resp.raw_response.url
+#             soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
+#             base_url = resp.raw_response.url
+            
+        
+            scraped_urls = set()
+            tree = html.fromstring(resp.raw_response.content)
+            # Extracting link
+            for link in tree.xpath('//a'):
+                try:
+                    if 'nofollow' in link.get('rel', ''):
+                        continue
+                    link = link.get('href')
+                    # To handle traps
+                    full_url = urljoin(resp.url, link)
+                    normalized_url = normalize(full_url)
+                    # unq_links.add(normalized_url)
+                    scraped_urls.add(normalized_url)
+                except ValueError:
+                    continue
+            return scraped_urls
+            
+            '''
 
             # Extract all anchor tags (<a>) with an 'href' attribute
             links = soup.find_all('a', href=True)
+            print(links)
 
             # Extract the href attribute from each anchor tag and create absolute URLs
             scraped_urls = [urljoin(base_url, link['href']) for link in links]
+            
+            #Normalize the urls
+            scraped_urls = [normalize(url) for url in scarped_urls ]
 
             # Remove fragments from the URLs
             scraped_urls = [urldefrag(url)[0] for url in scraped_urls]
-
+            
             # Filter URLs to include only those within the specified domains and paths
             scraped_urls = [url for url in scraped_urls if self.is_valid(url)]
             print(scraped_urls)
             return scraped_urls
+            ''' 
         else:
             return []
 
@@ -75,10 +102,10 @@ class Scraper:
 #                 return False
             
             # Check if the URL starts with "https://swiki.ics.uci.edu/" - temporary fix to avoid getting there
-            if parsed.scheme == "https" and netloc == "swiki.ics.uci.edu" and parsed.path.startswith("/"):
+            if parsed.scheme == "https" and "swiki.ics.uci.edu" in netloc and parsed.path.startswith("/"):
                 return False
             # Check if the URL starts with "https://wiki.ics.uci.edu/" - temporary fix to avoid getting there
-            if parsed.scheme == "https" and netloc == "wiki.ics.uci.edu" and parsed.path.startswith("/"):
+            if parsed.scheme == "https" and "wiki.ics.uci.edu" in netloc and parsed.path.startswith("/"):
                 return False
 
             return not re.match(
@@ -89,7 +116,7 @@ class Scraper:
                 + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
                 + r"|epub|dll|cnf|tgz|sha1"
                 + r"|thmx|mso|arff|rtf|jar|csv"
-                + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+                + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower()) and ( re.match(r".*\.(ics|cs|informatics|stat)\.uci\.edu$", parsed.netloc) or re.match(r".*today\.uci\.edu/department/information_computer_sciences/.*", url))
 
         except TypeError:
             print("TypeError for ", parsed)
