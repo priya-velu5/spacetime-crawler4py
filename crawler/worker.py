@@ -52,9 +52,12 @@ class Worker(Thread):
             
             # Honor the politeness delay
             time.sleep(self.config.time_delay)
-
-            resp = download(tbd_url, self.config, self.logger)
             
+            if self.isvalid(tbd_url):
+                resp = download(tbd_url, self.config, self.logger)
+            else:
+                self.logger.info( f"skipping {tbd_url}, as it is prohibited!! ")
+                continue
             self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
             
             # Check invalid responses
@@ -95,42 +98,44 @@ class Worker(Thread):
                 if resp.raw_response is not None:
                     self.text_content = resp.raw_response.content.decode("utf-8", "ignore") 
                     
-                    # download the text content if all checks are passed
-                    self.download_text(tbd_url)
-                    # if self.should_avoid(tbd_url):
-                    #     self.logger.info(f"Avoiding {tbd_url} to prevent external crawl.")
-                    #     continue              
-                    scraped_urls = self.scraper.scraper(tbd_url, resp)
+                    
+                    if self.isvalid(tbd_url):
+                        # download the text content if all checks are passed
+                        self.download_text(tbd_url)              
+                        scraped_urls = self.scraper.scraper(tbd_url, resp)
 
-                    if not scraped_urls:
-                        self.logger.info(f"Skipping {tbd_url} as it has no information content.")
-                        self.frontier.mark_url_complete(tbd_url)
-                        continue
-
-                    for scraped_url in scraped_urls:
-                        # Detect and avoid prohibited sites                                
-
-
-                        # Check similarity with already scraped pages
-                        if self.is_similar_to_scraped(scraped_url):
-                            self.logger.info(f"Skipping {scraped_url} as it is similar to already scraped pages.")
-                            continue
-
-
-                        self.frontier.add_url(scraped_url)
-                        self.logger.info(f"Added {scraped_url} to the frontier.")
-
-                        # Check if the download was successful
-                        if resp is None:
-                            self.logger.info(f"Failed to download {tbd_url}. Skipping.")
+                        if not scraped_urls:
+                            self.logger.info(f"Skipping {tbd_url} as it has no information content.")
                             self.frontier.mark_url_complete(tbd_url)
                             continue
 
-                        self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
+                        for scraped_url in scraped_urls:
+                            # Detect and avoid prohibited sites                                
 
-                    self.frontier.mark_url_complete(tbd_url)
+
+                            # Check similarity with already scraped pages
+                            if self.is_similar_to_scraped(scraped_url):
+                                self.logger.info(f"Skipping {scraped_url} as it is similar to already scraped pages.")
+                                continue
+
+
+                            self.frontier.add_url(scraped_url)
+                            self.logger.info(f"Added {scraped_url} to the frontier.")
+
+                            # Check if the download was successful
+                            if resp is None:
+                                self.logger.info(f"Failed to download {tbd_url}. Skipping.")
+                                self.frontier.mark_url_complete(tbd_url)
+                                continue
+
+                            self.logger.info( f"Downloaded {tbd_url}, status <{resp.status}> ")
+
+                        self.frontier.mark_url_complete(tbd_url)
+                    else:
+                        self.logger.info(f"Avoiding {tbd_url} to prevent external crawl - helo.")
+
                 else:
-                    None
+                    pass
 
                 
                 
@@ -198,30 +203,72 @@ class Worker(Thread):
         
         return False
     
+    def isvalid(self, url):
+        allowed_domains = [
+            "ics.uci.edu",
+            "cs.uci.edu",
+            "informatics.uci.edu",
+            "stat.uci.edu",
+            "today.uci.edu"
+        ]
+        allowed_paths = [
+            "/",
+            "/department/information_computer_sciences/"
+        ]
+
+    
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        netloc = parsed.netloc.replace("www.", "")
+        print(netloc)
+        print(allowed_domains)
+        if netloc in allowed_domains and any(parsed.path.startswith(path) for path in allowed_paths):
+            # print("Not allowed domain:", parsed.netloc)
+            # print("Allowed domains:", allowed_domains)
+            return True
+
+#         if  any(parsed.path.startswith(path) for path in allowed_paths):
+#             return True
+        
+        print(netloc, "not here")
+        return False
+    
     
     def should_avoid(self, url):
         """
         Check if the given URL should be avoided to prevent infinite traps.
         """
         parsed_url = urlparse(url)
-        domain = parsed_url.netloc
+        domain = parsed_url.netloc.replace("www.","")
         path = parsed_url.path
         
+        allowed_domains = self.config.allowed_domains
+        allowed_paths = self.config.allowed_paths
+        
+        print("Domain: "+domain)
+        print("path: "+path)
         print("Allowed Domains:", self.config.allowed_domains)
         print("Allowed Paths:", self.config.allowed_paths)
         
-        # Check if the domain is in the list of allowed domains
-        if not any(domain.endswith(allowed_domain) for allowed_domain in self.config.allowed_domains):
+        if domain not in allowed_domains:
             self.logger.info(f"Avoiding {url} because it's not in the allowed domains.")
             return True
-
-        # Check if the path is in the list of allowed paths for the domain
-        if not any(path.startswith(allowed_path) for allowed_path in self.config.allowed_paths):
-            self.logger.info(f"Avoiding {url} because it's not in the allowed paths.")
+            
+        if not any(parsed_url.path.startswith(path) for path in allowed_paths):
             return True
         
-        
+#         # Check if the domain is in the list of allowed domains
+#         if not any(domain.endswith(allowed_domain) for allowed_domain in self.config.allowed_domains):
+#             self.logger.info(f"Avoiding {url} because it's not in the allowed domains.")
+#             return True
 
+#         # Check if the path is in the list of allowed paths for the domain
+#         if not any(path.startswith(allowed_path) for allowed_path in self.config.allowed_paths):
+#             self.logger.info(f"Avoiding {url} because it's not in the allowed paths.")
+#             return True
+        
+    
         return False
 
     def download_text(self, url):
