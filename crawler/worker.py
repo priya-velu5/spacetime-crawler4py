@@ -192,8 +192,10 @@ class Worker(Thread):
         text_density = sum(c.isalpha() for c in self.text_content) / len(self.text_content)
         if text_density < text_density_threshold:
             return True
-
+        
+        
         # Stopword density threshold
+        nltk.download('stopwords')
         stop_words = set(stopwords.words("english"))
         content_words = [word for word in self.text_content.split() if word.lower() not in stop_words]
         stopword_density_threshold = self.config.min_stopword_density
@@ -283,6 +285,11 @@ class Worker(Thread):
         
         filename = url.split('//')[1]
         filename = filename.replace('/','_')
+        
+        # make sure filename and path combined doesnt exceed max length of 255 characters
+        if len(filename) > 200:
+            filename = filename[:200]
+        
         filename = filename+ '.txt'
         # Create the full file path
         file_path = os.path.join(folder, filename)

@@ -45,8 +45,9 @@ class Scraper:
                     normalized_url = normalize(full_url)
                     # unq_links.add(normalized_url)
                     scraped_urls.add(normalized_url)
-                except ValueError:
+                except Exception:
                     continue
+                    
             return scraped_urls
             
             '''
